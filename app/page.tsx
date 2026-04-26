@@ -3,6 +3,8 @@ import React, { useState, useMemo, useRef } from "react";
 
 /* ---------------- UTIL FUNCTIONS ---------------- */
 
+const round = (n: number) => Math.round(n * 100) / 100;
+
 // Indian number format with decimals
 const formatIndianNumber = (num: number): string => {
   return num.toLocaleString("en-IN", {
@@ -11,24 +13,27 @@ const formatIndianNumber = (num: number): string => {
   });
 };
 
-// Format input (integer typing only)
+// Format input (NOW supports decimals correctly)
 const formatInput = (value: string) => {
   const cleaned = value.replace(/,/g, "");
   if (!cleaned) return "";
 
-  const num = parseInt(cleaned, 10);
+  const num = parseFloat(cleaned);
   if (isNaN(num)) return "";
 
-  return num.toLocaleString("en-IN");
+  return cleaned.includes(".")
+    ? cleaned // keep decimals raw while typing
+    : num.toLocaleString("en-IN");
 };
 
 const parseNumber = (value: string): number | null => {
   if (!value) return null;
   const num = Number(value.replace(/,/g, ""));
-  return Number.isFinite(num) ? num : null;
+  if (!Number.isFinite(num) || num < 0) return null;
+  return num;
 };
 
-/* ----------- RUPEES TO WORDS WITH PAISE ----------- */
+/* ----------- RUPEES TO WORDS WITH FIXED ROUNDING ----------- */
 
 const numberToRupeesWords = (num: number): string => {
   if (num === 0) return "Zero Rupees Only";
@@ -55,7 +60,6 @@ const numberToRupeesWords = (num: number): string => {
     "Eighteen",
     "Nineteen",
   ];
-
   const tens = [
     "",
     "",
@@ -69,22 +73,21 @@ const numberToRupeesWords = (num: number): string => {
     "Ninety",
   ];
 
-  const getTwoDigits = (n: number): string => {
-    if (n < 20) return ones[n];
-    return tens[Math.floor(n / 10)] + (n % 10 ? " " + ones[n % 10] : "");
-  };
+  const getTwo = (n: number) =>
+    n < 20
+      ? ones[n]
+      : tens[Math.floor(n / 10)] + (n % 10 ? " " + ones[n % 10] : "");
 
-  const getThreeDigits = (n: number): string => {
-    if (n < 100) return getTwoDigits(n);
-    return (
-      ones[Math.floor(n / 100)] +
-      " Hundred" +
-      (n % 100 ? " " + getTwoDigits(n % 100) : "")
-    );
-  };
+  const getThree = (n: number) =>
+    n < 100
+      ? getTwo(n)
+      : ones[Math.floor(n / 100)] +
+        " Hundred" +
+        (n % 100 ? " " + getTwo(n % 100) : "");
 
-  const integerPart = Math.floor(num);
-  const decimalPart = Math.round((num - integerPart) * 100);
+  const rounded = round(num);
+  const integerPart = Math.floor(rounded);
+  const decimalPart = Math.round((rounded - integerPart) * 100);
 
   let n = integerPart;
   let result = "";
@@ -100,15 +103,15 @@ const numberToRupeesWords = (num: number): string => {
 
   const hundred = n;
 
-  if (crore) result += getTwoDigits(crore) + " Crore ";
-  if (lakh) result += getTwoDigits(lakh) + " Lakh ";
-  if (thousand) result += getTwoDigits(thousand) + " Thousand ";
-  if (hundred) result += getThreeDigits(hundred);
+  if (crore) result += getTwo(crore) + " Crore ";
+  if (lakh) result += getTwo(lakh) + " Lakh ";
+  if (thousand) result += getTwo(thousand) + " Thousand ";
+  if (hundred) result += getThree(hundred);
 
   result = result.trim() + " Rupees";
 
   if (decimalPart > 0) {
-    result += " and " + getTwoDigits(decimalPart) + " Paise";
+    result += " and " + getTwo(decimalPart) + " Paise";
   }
 
   return result + " Only";
@@ -140,19 +143,21 @@ export default function Page() {
   const amount = useMemo(() => parseNumber(amountInput), [amountInput]);
   const kg = useMemo(() => parseNumber(kgInput), [kgInput]);
 
-  /* ---------------- DERIVED VALUES (UNCHANGED LOGIC) ---------------- */
+  /* ---------------- FIXED CALCULATIONS ---------------- */
 
   const oneKg = useMemo(() => {
     if (amount === null) return null;
-    return amount / 80;
+    return round(amount / 80);
   }, [amount]);
 
   const value = useMemo(() => {
     if (oneKg === null || kg === null) return null;
-    return oneKg * kg;
+    return round(oneKg * kg);
   }, [oneKg, kg]);
 
-  /* ---------------- YOUR ORIGINAL WORD FUNCTIONS (UNCHANGED) ---------------- */
+  const finalValue = mode === "book" && bookTotal !== null ? bookTotal : value;
+
+  /* ---------------- WORDS ---------------- */
 
   const amountWords = useMemo(
     () => (amount !== null ? numberToRupeesWords(amount) : ""),
@@ -174,11 +179,8 @@ export default function Page() {
 
   const handleKgChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/,/g, "");
-
-    // allow decimals
     if (raw && !/^\d*\.?\d*$/.test(raw)) return;
-
-    setKgInput(raw); // DON'T format with commas for decimals
+    setKgInput(raw);
   };
 
   const handleClear = () => {
@@ -186,17 +188,17 @@ export default function Page() {
     setKgInput("");
   };
 
-  /* ---------------- BOOK MODE LOGIC ---------------- */
+  /* ---------------- BOOK MODE FIXED ---------------- */
 
   const handleAdd = () => {
     if (amount === null || kg === null || oneKg === null || value === null)
       return;
 
     const newEntry: Entry = {
-      amount,
-      kg,
-      oneKg,
-      value,
+      amount: round(amount),
+      kg: round(kg),
+      oneKg: round(oneKg),
+      value: round(value),
     };
 
     setEntries((prev) => [...prev, newEntry]);
@@ -204,7 +206,7 @@ export default function Page() {
   };
 
   const handleAddAll = () => {
-    const total = entries.reduce((sum, e) => sum + e.value, 0);
+    const total = round(entries.reduce((sum, e) => sum + e.value, 0));
     setBookTotal(total);
   };
 
@@ -218,7 +220,7 @@ export default function Page() {
 
   const updateEntry = (index: number, field: "amount" | "kg", val: string) => {
     const cleaned = val.replace(/,/g, "");
-    if (cleaned && !/^\d*$/.test(cleaned)) return;
+    if (cleaned && !/^\d*\.?\d*$/.test(cleaned)) return;
 
     setEntries((prev) =>
       prev.map((item, i) => {
@@ -232,8 +234,8 @@ export default function Page() {
         const updatedKg =
           field === "kg" ? (parseNumber(cleaned) ?? item.kg) : item.kg;
 
-        const oneKg = updatedAmount / 80;
-        const value = oneKg * updatedKg;
+        const oneKg = round(updatedAmount / 80);
+        const value = round(oneKg * updatedKg);
 
         return {
           ...item,
@@ -248,15 +250,11 @@ export default function Page() {
 
   const switchMode = () => {
     setMode((prev) => (prev === "normal" ? "book" : "normal"));
-
-    // reset book mode when switching back
     setEntries([]);
     setBookTotal(null);
   };
 
-  const finalValue = mode === "book" && bookTotal !== null ? bookTotal : value;
-
-  /* ---------------- UI ---------------- */
+  /* ---------------- UI (UNCHANGED) ---------------- */
 
   return (
     <div className="w-full max-w-xl mx-auto p-6 space-y-10">
@@ -290,7 +288,7 @@ export default function Page() {
           <h2 className="text-xl font-semibold mb-2">Amount ₹</h2>
           <input
             type="text"
-            inputMode="numeric"
+            inputMode="decimal"
             value={amountInput}
             onChange={handleAmountChange}
             onFocus={(e) => e.target.select()}
@@ -327,28 +325,23 @@ export default function Page() {
               Clear All
             </button>
           ) : (
-            <>
-              <button
-                onClick={handleAdd}
-                className="w-full bg-green-500 text-white py-2 rounded-xl"
-              >
-                Add Entry
-              </button>
-            </>
+            <button
+              onClick={handleAdd}
+              className="w-full bg-green-500 text-white py-2 rounded-xl"
+            >
+              Add Entry
+            </button>
           )}
         </div>
       </div>
 
       {/* BOOK LIST */}
-      {/* BOOK LIST */}
       {mode === "book" && (
         <div className="pt-6 space-y-4">
           <h2 className="text-xl font-semibold">Saved Entries</h2>
 
-          {/* Entries */}
           {entries.map((e, i) => (
             <div key={i} className="border p-3 rounded-lg space-y-2">
-              {/* VIEW MODE */}
               {!e.isEditing ? (
                 <>
                   <div className="flex justify-between">
@@ -372,10 +365,9 @@ export default function Page() {
                   </button>
                 </>
               ) : (
-                /* EDIT MODE */
                 <div className="space-y-2">
                   <input
-                    value={formatIndianNumber(e.amount)}
+                    value={e.amount}
                     onChange={(ev) => updateEntry(i, "amount", ev.target.value)}
                     className="w-full border px-2 py-1 rounded"
                   />
@@ -386,24 +378,21 @@ export default function Page() {
                     className="w-full border px-2 py-1 rounded"
                   />
 
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => toggleEdit(i)}
-                      className="bg-green-500 text-white px-3 py-1 rounded"
-                    >
-                      Save
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => toggleEdit(i)}
+                    className="bg-green-500 text-white px-3 py-1 rounded"
+                  >
+                    Save
+                  </button>
                 </div>
               )}
             </div>
           ))}
 
-          {/* ADD ALL BUTTON AT BOTTOM */}
           {entries.length > 0 && (
             <button
               onClick={handleAddAll}
-              className="w-full bg-blue-500 text-white py-2 rounded-xl active:scale-95 transition transform"
+              className="w-full bg-blue-500 text-white py-2 rounded-xl"
             >
               Add All
             </button>
