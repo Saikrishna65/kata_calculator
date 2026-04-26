@@ -168,14 +168,17 @@ export default function Page() {
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/,/g, "");
-    if (raw && !/^\d*$/.test(raw)) return;
+    if (raw && !/^\d*\.?\d*$/.test(raw)) return;
     setAmountInput(formatInput(raw));
   };
 
   const handleKgChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/,/g, "");
-    if (raw && !/^\d*$/.test(raw)) return;
-    setKgInput(formatInput(raw));
+
+    // allow decimals
+    if (raw && !/^\d*\.?\d*$/.test(raw)) return;
+
+    setKgInput(raw); // DON'T format with commas for decimals
   };
 
   const handleClear = () => {
