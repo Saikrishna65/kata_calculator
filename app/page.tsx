@@ -308,7 +308,7 @@ export default function Page() {
           <input
             ref={kgRef}
             type="text"
-            inputMode="numeric"
+            inputMode="decimal"
             value={kgInput}
             onChange={handleKgChange}
             onFocus={(e) => e.target.select()}
